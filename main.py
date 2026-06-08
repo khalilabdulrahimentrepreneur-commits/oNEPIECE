@@ -64,6 +64,14 @@ class CharacterRequest(BaseModel):
     bounty: Optional[str] = None
 
 
+class HelloRequest(BaseModel):
+    """Simple hello request for demonstration"""
+    name: Optional[str] = "World"
+    strategy: Optional[str] = "hybrid"
+    content_type: Optional[str] = "text"
+    max_depth: Optional[int] = 2
+
+
 # ============================================================================
 # ROOT & HEALTH CHECK ENDPOINTS
 # ============================================================================
@@ -86,6 +94,56 @@ async def health_check():
         "version": "1.0.0",
         "mindfighter_ready": True
     }
+
+
+# ============================================================================
+# HELLO WORLD - DIVE
+# ============================================================================
+
+@app.get("/api/v1/hello", tags=["Hello"])
+async def hello_world():
+    """Simple Hello World endpoint with Mindfighter demo"""
+    try:
+        base_message = "Hello, World!"
+        # Generate a few variants using Mindfighter for demonstration
+        generated = generate(
+            input_data={"greeting": base_message},
+            strategy="hybrid",
+            content_type="text",
+            max_depth=1
+        )
+        return {
+            "message": base_message,
+            "mindfighter_variant": generated["output"],
+            "confidence": generated["confidence"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/hello", tags=["Hello"])
+async def hello_generate(req: HelloRequest):
+    """Generate Hello variations using specified strategy/content-type"""
+    try:
+        name = req.name or "World"
+        greeting = f"Hello, {name}!"
+
+        result = generate(
+            input_data={"greeting": greeting, "name": name},
+            strategy=req.strategy,
+            content_type=req.content_type,
+            max_depth=req.max_depth
+        )
+
+        return {
+            "input_greeting": greeting,
+            "generated": result["output"],
+            "strategy": result["strategy"],
+            "confidence": result["confidence"],
+            "processing_time": result["processing_time"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Hello generation failed: {str(e)}")
 
 
 # ============================================================================
