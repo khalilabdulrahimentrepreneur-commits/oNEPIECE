@@ -1,20 +1,34 @@
 """
 FastAPI Application - Core Routing and API Setup
 Handles API requests with Uvicorn ASGI server
+Integrated with Mindfighter Algorithm
 """
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import os
 from pathlib import Path
+from pydantic import BaseModel
+from typing import Any, Optional
+from mindfighter import generate, ProcessingStrategy, ContentType
 
 # Initialize FastAPI application
 app = FastAPI(
-    title="OnePiece API",
-    description="Structured FastAPI application with template rendering",
+    title="OnePiece API - Mindfighter Engine",
+    description="Structured FastAPI application with Mindfighter auto-generator",
     version="1.0.0"
+)
+
+# Add CORS middleware for cross-origin requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Configure base directory
@@ -29,6 +43,25 @@ if static_dir.exists():
 templates_dir = BASE_DIR / "templates"
 if templates_dir.exists():
     templates = Jinja2Templates(directory=str(templates_dir))
+
+
+# ============================================================================
+# REQUEST MODELS
+# ============================================================================
+
+class GenerationRequest(BaseModel):
+    """Request model for Mindfighter generation"""
+    data: Any
+    strategy: str = "hybrid"
+    content_type: str = "json"
+    max_depth: int = 5
+
+
+class CharacterRequest(BaseModel):
+    """Request model for character creation"""
+    name: str
+    role: str
+    bounty: Optional[str] = None
 
 
 # ============================================================================
@@ -49,8 +82,71 @@ async def health_check():
     """Health check endpoint for monitoring"""
     return {
         "status": "healthy",
-        "service": "OnePiece API",
-        "version": "1.0.0"
+        "service": "OnePiece API with Mindfighter",
+        "version": "1.0.0",
+        "mindfighter_ready": True
+    }
+
+
+# ============================================================================
+# MINDFIGHTER GENERATION ENDPOINTS
+# ============================================================================
+
+@app.post("/api/v1/generate", tags=["Mindfighter"])
+async def api_generate(request: GenerationRequest):
+    """Generate content using Mindfighter algorithm
+    
+    Strategies: semantic, syntactic, hybrid, recursive, iterative
+    Content Types: text, json, markdown, html, code
+    """
+    try:
+        result = generate(
+            input_data=request.data,
+            strategy=request.strategy,
+            content_type=request.content_type,
+            max_depth=request.max_depth
+        )
+        return {
+            "success": True,
+            "result": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Generation failed: {str(e)}")
+
+
+@app.get("/api/v1/generate/strategies", tags=["Mindfighter"])
+async def get_strategies():
+    """Get available Mindfighter strategies"""
+    return {
+        "strategies": [
+            "semantic",
+            "syntactic",
+            "hybrid",
+            "recursive",
+            "iterative"
+        ],
+        "descriptions": {
+            "semantic": "Meaning-based analysis and synthesis",
+            "syntactic": "Structure-based reorganization",
+            "hybrid": "Combined semantic and syntactic approach",
+            "recursive": "Hierarchical nested processing",
+            "iterative": "Loop-based quality refinement"
+        }
+    }
+
+
+@app.get("/api/v1/generate/content-types", tags=["Mindfighter"])
+async def get_content_types():
+    """Get available output content types"""
+    return {
+        "content_types": [
+            "text",
+            "json",
+            "markdown",
+            "html",
+            "code",
+            "api_response"
+        ]
     }
 
 
@@ -63,10 +159,13 @@ async def api_status():
     """Get API status and system information"""
     return {
         "api_status": "running",
+        "mindfighter_status": "operational",
         "endpoints_available": [
             "/api/v1/status",
+            "/api/v1/generate",
             "/api/v1/characters",
-            "/api/v1/arcs"
+            "/api/v1/arcs",
+            "/docs"
         ]
     }
 
@@ -76,9 +175,11 @@ async def get_characters():
     """Fetch all characters"""
     return {
         "characters": [
-            {"id": 1, "name": "Monkey D. Luffy", "role": "Captain"},
-            {"id": 2, "name": "Roronoa Zoro", "role": "Swordsman"},
-            {"id": 3, "name": "Nami", "role": "Navigator"}
+            {"id": 1, "name": "Monkey D. Luffy", "role": "Captain", "bounty": "3,000,000,000"},
+            {"id": 2, "name": "Roronoa Zoro", "role": "Swordsman", "bounty": "1,111,000,000"},
+            {"id": 3, "name": "Nami", "role": "Navigator", "bounty": "366,000,000"},
+            {"id": 4, "name": "Usopp", "role": "Sniper", "bounty": "200,000,000"},
+            {"id": 5, "name": "Sanji", "role": "Cook", "bounty": "1,032,000,000"}
         ]
     }
 
@@ -87,9 +188,11 @@ async def get_characters():
 async def get_character(character_id: int):
     """Fetch a specific character by ID"""
     characters = {
-        1: {"id": 1, "name": "Monkey D. Luffy", "role": "Captain", "bounty": "3,000,000,000"},
-        2: {"id": 2, "name": "Roronoa Zoro", "role": "Swordsman", "bounty": "1,111,000,000"},
-        3: {"id": 3, "name": "Nami", "role": "Navigator", "bounty": "366,000,000"}
+        1: {"id": 1, "name": "Monkey D. Luffy", "role": "Captain", "bounty": "3,000,000,000", "crew": "Straw Hat"},
+        2: {"id": 2, "name": "Roronoa Zoro", "role": "Swordsman", "bounty": "1,111,000,000", "crew": "Straw Hat"},
+        3: {"id": 3, "name": "Nami", "role": "Navigator", "bounty": "366,000,000", "crew": "Straw Hat"},
+        4: {"id": 4, "name": "Usopp", "role": "Sniper", "bounty": "200,000,000", "crew": "Straw Hat"},
+        5: {"id": 5, "name": "Sanji", "role": "Cook", "bounty": "1,032,000,000", "crew": "Straw Hat"}
     }
     
     if character_id not in characters:
@@ -98,15 +201,91 @@ async def get_character(character_id: int):
     return characters[character_id]
 
 
+@app.post("/api/v1/characters", tags=["Characters"])
+async def create_character(character: CharacterRequest):
+    """Create a new character (uses Mindfighter for enrichment)"""
+    
+    # Use Mindfighter to enrich character data
+    enrichment = generate(
+        input_data={
+            "name": character.name,
+            "role": character.role,
+            "bounty": character.bounty or "Unknown"
+        },
+        strategy="semantic",
+        content_type="json"
+    )
+    
+    return {
+        "character": character.dict(),
+        "enrichment": enrichment["output"],
+        "mindfighter_confidence": enrichment["confidence"]
+    }
+
+
 @app.get("/api/v1/arcs", tags=["Story Arcs"])
 async def get_arcs():
     """Fetch all story arcs"""
     return {
         "arcs": [
-            {"id": 1, "name": "East Blue", "chapters": "1-100"},
-            {"id": 2, "name": "Grand Line", "chapters": "101-346"},
-            {"id": 3, "name": "Sky Island", "chapters": "181-195"}
+            {"id": 1, "name": "East Blue", "chapters": "1-100", "saga": "Introduction"},
+            {"id": 2, "name": "Grand Line", "chapters": "101-346", "saga": "Adventure"},
+            {"id": 3, "name": "Sky Island", "chapters": "181-195", "saga": "Adventure"},
+            {"id": 4, "name": "Water 7", "chapters": "322-381", "saga": "Adventure"},
+            {"id": 5, "name": "Marineford", "chapters": "456-489", "saga": "War"}
         ]
+    }
+
+
+@app.get("/api/v1/arcs/{arc_id}", tags=["Story Arcs"])
+async def get_arc(arc_id: int):
+    """Fetch specific story arc by ID"""
+    arcs = {
+        1: {"id": 1, "name": "East Blue", "chapters": "1-100", "saga": "Introduction", "events": "Crew formation"},
+        2: {"id": 2, "name": "Grand Line", "chapters": "101-346", "saga": "Adventure", "events": "Major battles"},
+        3: {"id": 3, "name": "Sky Island", "chapters": "181-195", "saga": "Adventure", "events": "Sky exploration"},
+        4: {"id": 4, "name": "Water 7", "chapters": "322-381", "saga": "Adventure", "events": "Ship crisis"},
+        5: {"id": 5, "name": "Marineford", "chapters": "456-489", "saga": "War", "events": "Major war"}
+    }
+    
+    if arc_id not in arcs:
+        raise HTTPException(status_code=404, detail="Arc not found")
+    
+    return arcs[arc_id]
+
+
+# ============================================================================
+# ADVANCED ENDPOINTS
+# ============================================================================
+
+@app.post("/api/v1/analyze", tags=["Analysis"])
+async def analyze_data(data: dict):
+    """Analyze data using Mindfighter with detailed breakdown"""
+    results = {}
+    for strategy in ["semantic", "syntactic", "hybrid"]:
+        result = generate(
+            input_data=data,
+            strategy=strategy,
+            content_type="json"
+        )
+        results[strategy] = result
+    
+    return {
+        "input": data,
+        "analysis": results,
+        "best_strategy": max(results.items(), key=lambda x: x[1]["confidence"])[0]
+    }
+
+
+@app.get("/api/v1/metrics", tags=["Metrics"])
+async def get_metrics():
+    """Get Mindfighter performance metrics"""
+    from mindfighter import mindfighter
+    
+    return {
+        "strategy_metrics": mindfighter.strategy_metrics,
+        "transformation_history_count": len(mindfighter.transformation_history),
+        "cache_size": len(mindfighter.cache)
     }
 
 
@@ -117,21 +296,27 @@ async def get_arcs():
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Custom HTTP exception handler"""
-    return {
-        "error": exc.detail,
-        "status_code": exc.status_code,
-        "path": str(request.url)
-    }
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "status_code": exc.status_code,
+            "path": str(request.url)
+        }
+    )
 
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """Catch-all exception handler"""
-    return {
-        "error": "Internal Server Error",
-        "status_code": 500,
-        "detail": str(exc)
-    }
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "status_code": 500,
+            "detail": str(exc)
+        }
+    )
 
 
 # ============================================================================
@@ -143,7 +328,9 @@ async def startup_event():
     """Execute on application startup"""
     print("🚀 FastAPI application starting...")
     print(f"📁 Base directory: {BASE_DIR}")
+    print(f"🔧 Mindfighter Engine: Initialized")
     print(f"🎯 API Documentation: http://localhost:8000/docs")
+    print(f"🧠 Mindfighter Ready: True")
 
 
 @app.on_event("shutdown")
