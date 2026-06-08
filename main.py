@@ -17,6 +17,7 @@ import asyncio
 import hashlib
 import json
 from mindfighter import generate, ProcessingStrategy, ContentType, mindfighter as mindfighter_instance
+from middleware import AntiEntryLogMiddleware
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -33,6 +34,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add the AntiEntryLog middleware (audit + redaction)
+app.add_middleware(AntiEntryLogMiddleware, max_entries=2000, redaction_keys=["password", "token", "secret", "authorization"], persist=True, log_path="logs/antientry.log")
 
 # Configure base directory
 BASE_DIR = Path(__file__).resolve().parent
@@ -110,6 +114,10 @@ async def startup_event():
     app.state.mindfighter = mindfighter_instance
     app.state.mindfighter_lock = asyncio.Lock()
     app.state.generate_cache = {}
+    app.state.antientry_log = []
+
+    # Ensure logs directory exists
+    os.makedirs(os.path.join(BASE_DIR, "logs"), exist_ok=True)
 
     print("🚀 FastAPI application starting...")
     print(f"📁 Base directory: {BASE_DIR}")
