@@ -24,7 +24,8 @@ async function apiCall(endpoint, options = {}) {
         });
 
         if (!response.ok) {
-            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            const txt = await response.text();
+            throw new Error(`API Error: ${response.status} ${response.statusText} - ${txt}`);
         }
 
         return await response.json();
@@ -68,6 +69,70 @@ async function checkHealth() {
             </div>
         `;
     }
+}
+
+// ============================================================================
+// GENERATE FROM DASHBOARD
+// ============================================================================
+
+/**
+ * Trigger Mindfighter generation from the dashboard UI
+ */
+async function generateFromDashboard(payload) {
+    const resultBox = document.getElementById('generate-result');
+    try {
+        resultBox.innerHTML = '<div class="spinner"></div>';
+        const res = await fetch(`${API_BASE_URL}/generate`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+            throw new Error('Generation failed');
+        }
+
+        const result = data.result;
+        const pretty = typeof result.output === 'object' ? JSON.stringify(result.output, null, 2) : String(result.output);
+
+        resultBox.innerHTML = `
+            <div class="section">
+                <h4>Generated Artifact</h4>
+                <pre style="text-align:left; white-space:pre-wrap; background:#0b1220; padding:1rem; border-radius:6px;">${escapeHtml(pretty)}</pre>
+                <p><strong>Strategy:</strong> ${result.strategy}</p>
+                <p><strong>Confidence:</strong> ${result.confidence}</p>
+                <p><strong>Processing Time:</strong> ${result.processing_time}s</p>
+            </div>
+        `;
+    } catch (err) {
+        resultBox.innerHTML = `<div class="section"><p style="color:var(--error-color);">Generation error: ${err.message}</p></div>`;
+    }
+}
+
+// Escape HTML to avoid injection in pre blocks
+function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, function(m) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"})[m]; });
+}
+
+// Bind generate button
+function bindGenerateButton() {
+    const btn = document.getElementById('generate-btn');
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+        const name = document.getElementById('generate-name').value || undefined;
+        const strategy = document.getElementById('generate-strategy').value;
+        const content_type = document.getElementById('generate-content').value;
+
+        const payload = {
+            data: { name: name },
+            strategy: strategy,
+            content_type: content_type,
+            max_depth: 2
+        };
+
+        generateFromDashboard(payload);
+    });
 }
 
 // ============================================================================
@@ -209,6 +274,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Setup event listeners
     setupEventListeners();
+    bindGenerateButton();
     
     console.log('✅ Dashboard Ready');
 });

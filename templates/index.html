@@ -27,7 +27,31 @@
             <section class="hero">
                 <h2>Welcome to the OnePiece Universe</h2>
                 <p>Built with FastAPI and Uvicorn for high-performance async operations</p>
-                <button class="btn" onclick="checkHealth()">Check API Status</button>
+                <div style="display:flex; gap:1rem; justify-content:center; margin-top:1rem;">
+                    <button class="btn" onclick="checkHealth()">Check API Status</button>
+
+                    <!-- Generate controls -->
+                    <div style="display:flex; gap:0.5rem; align-items:center;">
+                        <input id="generate-name" type="text" placeholder="Name (optional)" style="padding:0.5rem;border-radius:4px;border:1px solid #404040;">
+                        <select id="generate-strategy" style="padding:0.5rem;border-radius:4px;border:1px solid #404040;">
+                            <option value="hybrid">hybrid</option>
+                            <option value="semantic">semantic</option>
+                            <option value="syntactic">syntactic</option>
+                            <option value="recursive">recursive</option>
+                            <option value="iterative">iterative</option>
+                        </select>
+                        <select id="generate-content" style="padding:0.5rem;border-radius:4px;border:1px solid #404040;">
+                            <option value="text">text</option>
+                            <option value="json">json</option>
+                            <option value="markdown">markdown</option>
+                            <option value="html">html</option>
+                            <option value="code">code</option>
+                        </select>
+                        <button id="generate-btn" class="btn btn-secondary">Generate</button>
+                    </div>
+                </div>
+
+                <div id="generate-result" style="margin-top:1rem; text-align:center;"></div>
             </section>
 
             <!-- API Status -->

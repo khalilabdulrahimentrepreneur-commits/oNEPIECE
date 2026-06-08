@@ -13,7 +13,10 @@ import os
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Any, Optional
-from mindfighter import generate, ProcessingStrategy, ContentType
+import asyncio
+import hashlib
+import json
+from mindfighter import generate, ProcessingStrategy, ContentType, mindfighter as mindfighter_instance
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -97,6 +100,31 @@ async def health_check():
 
 
 # ============================================================================
+# STARTUP & SHUTDOWN EVENTS (Engine Mounting + Lock + Cache)
+# ============================================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """Execute on application startup"""
+    # Mount the MindfighterEngine instance into the app state for DI
+    app.state.mindfighter = mindfighter_instance
+    app.state.mindfighter_lock = asyncio.Lock()
+    app.state.generate_cache = {}
+
+    print("🚀 FastAPI application starting...")
+    print(f"📁 Base directory: {BASE_DIR}")
+    print(f"🔧 Mindfighter Engine: Initialized")
+    print(f"🎯 API Documentation: http://localhost:8000/docs")
+    print(f"🧠 Mindfighter Ready: True")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Execute on application shutdown"""
+    print("🛑 FastAPI application shutting down...")
+
+
+# ============================================================================
 # HELLO WORLD - DIVE
 # ============================================================================
 
@@ -106,17 +134,22 @@ async def hello_world():
     try:
         base_message = "Hello, World!"
         # Generate a few variants using Mindfighter for demonstration
-        generated = generate(
-            input_data={"greeting": base_message},
-            strategy="hybrid",
-            content_type="text",
-            max_depth=1
-        )
-        return {
+        # Use the mounted engine for consistency
+        async with app.state.mindfighter_lock:
+            gen = await asyncio.to_thread(
+                app.state.mindfighter.generate,
+                {"greeting": base_message},
+                ProcessingStrategy.HYBRID,
+                ContentType.TEXT,
+                1
+            )
+        # gen is a GenerationResult object; format into public dict
+        response = {
             "message": base_message,
-            "mindfighter_variant": generated["output"],
-            "confidence": generated["confidence"]
+            "mindfighter_variant": gen.output,
+            "confidence": gen.confidence_score
         }
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -128,19 +161,65 @@ async def hello_generate(req: HelloRequest):
         name = req.name or "World"
         greeting = f"Hello, {name}!"
 
-        result = generate(
-            input_data={"greeting": greeting, "name": name},
-            strategy=req.strategy,
-            content_type=req.content_type,
-            max_depth=req.max_depth
-        )
+        try:
+            strategy_enum = ProcessingStrategy[req.strategy.upper()]
+        except Exception:
+            strategy_enum = ProcessingStrategy.HYBRID
+        try:
+            content_type_enum = ContentType[req.content_type.upper()]
+        except Exception:
+            content_type_enum = ContentType.TEXT
+
+        # Use cache to short-circuit repeated calls
+        key_obj = {
+            "greeting": greeting,
+            "strategy": strategy_enum.value,
+            "content_type": content_type_enum.value,
+            "max_depth": req.max_depth
+        }
+        key_str = json.dumps(key_obj, sort_keys=True)
+        key = hashlib.sha256(key_str.encode()).hexdigest()
+
+        if key in app.state.generate_cache:
+            cached = app.state.generate_cache[key]
+            return {
+                "input_greeting": greeting,
+                "generated": cached["output"],
+                "strategy": cached["strategy"],
+                "confidence": cached["confidence"],
+                "processing_time": cached["processing_time"],
+                "cached": True
+            }
+
+        async with app.state.mindfighter_lock:
+            gen = await asyncio.to_thread(
+                app.state.mindfighter.generate,
+                {"greeting": greeting, "name": name},
+                strategy_enum,
+                content_type_enum,
+                req.max_depth
+            )
+
+        result = {
+            "output": gen.output,
+            "strategy": gen.strategy_used.value,
+            "processing_time": gen.processing_time,
+            "depth": gen.depth_reached,
+            "transformations": gen.transformations_applied,
+            "confidence": gen.confidence_score,
+            "metadata": gen.metadata
+        }
+
+        # Store in cache
+        app.state.generate_cache[key] = result
 
         return {
             "input_greeting": greeting,
             "generated": result["output"],
             "strategy": result["strategy"],
             "confidence": result["confidence"],
-            "processing_time": result["processing_time"]
+            "processing_time": result["processing_time"],
+            "cached": False
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Hello generation failed: {str(e)}")
@@ -152,22 +231,61 @@ async def hello_generate(req: HelloRequest):
 
 @app.post("/api/v1/generate", tags=["Mindfighter"])
 async def api_generate(request: GenerationRequest):
-    """Generate content using Mindfighter algorithm
-    
-    Strategies: semantic, syntactic, hybrid, recursive, iterative
-    Content Types: text, json, markdown, html, code
+    """Generate content using the mounted Mindfighter engine (persistent instance)
+
+    This implementation uses app.state.mindfighter with a lock and an in-memory cache
+    to provide consistent metrics and avoid duplicate heavy computations.
     """
     try:
-        result = generate(
-            input_data=request.data,
-            strategy=request.strategy,
-            content_type=request.content_type,
-            max_depth=request.max_depth
-        )
-        return {
-            "success": True,
-            "result": result
+        # resolve strategy/content_type enums
+        try:
+            strategy_enum = ProcessingStrategy[request.strategy.upper()]
+        except Exception:
+            strategy_enum = ProcessingStrategy.HYBRID
+        try:
+            content_type_enum = ContentType[request.content_type.upper()]
+        except Exception:
+            content_type_enum = ContentType.JSON
+
+        # prepare cache key
+        key_obj = {
+            "data": request.data,
+            "strategy": strategy_enum.value,
+            "content_type": content_type_enum.value,
+            "max_depth": request.max_depth
         }
+        key_str = json.dumps(key_obj, sort_keys=True, default=str)
+        key = hashlib.sha256(key_str.encode()).hexdigest()
+
+        if key in app.state.generate_cache:
+            cached = app.state.generate_cache[key]
+            return {"success": True, "cached": True, "result": cached}
+
+        # Run generation in threadpool to avoid blocking the event loop
+        async with app.state.mindfighter_lock:
+            gen = await asyncio.to_thread(
+                app.state.mindfighter.generate,
+                request.data,
+                strategy_enum,
+                content_type_enum,
+                request.max_depth
+            )
+
+        result = {
+            "output": gen.output,
+            "strategy": gen.strategy_used.value,
+            "processing_time": gen.processing_time,
+            "depth": gen.depth_reached,
+            "transformations": gen.transformations_applied,
+            "confidence": gen.confidence_score,
+            "metadata": gen.metadata
+        }
+
+        # cache result
+        app.state.generate_cache[key] = result
+
+        return {"success": True, "cached": False, "result": result}
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Generation failed: {str(e)}")
 
@@ -375,26 +493,6 @@ async def general_exception_handler(request: Request, exc: Exception):
             "detail": str(exc)
         }
     )
-
-
-# ============================================================================
-# STARTUP & SHUTDOWN EVENTS
-# ============================================================================
-
-@app.on_event("startup")
-async def startup_event():
-    """Execute on application startup"""
-    print("🚀 FastAPI application starting...")
-    print(f"📁 Base directory: {BASE_DIR}")
-    print(f"🔧 Mindfighter Engine: Initialized")
-    print(f"🎯 API Documentation: http://localhost:8000/docs")
-    print(f"🧠 Mindfighter Ready: True")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Execute on application shutdown"""
-    print("🛑 FastAPI application shutting down...")
 
 
 if __name__ == "__main__":
