@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OnePiece - API Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏴‍☠️ OnePiece API Dashboard</h1>
+            <p>Navigate the Grand Line with FastAPI</p>
+        </header>
+
+        <nav class="navbar">
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/docs">API Docs</a></li>
+                <li><a href="#characters">Characters</a></li>
+                <li><a href="#arcs">Story Arcs</a></li>
+            </ul>
+        </nav>
+
+        <main>
+            <!-- Hero Section -->
+            <section class="hero">
+                <h2>Welcome to the OnePiece Universe</h2>
+                <p>Built with FastAPI and Uvicorn for high-performance async operations</p>
+                <button class="btn" onclick="checkHealth()">Check API Status</button>
+            </section>
+
+            <!-- API Status -->
+            <section class="section">
+                <h3>API Status</h3>
+                <div id="status" class="status-box">
+                    <p>Loading...</p>
+                </div>
+            </section>
+
+            <!-- Characters Section -->
+            <section class="section" id="characters">
+                <h3>🗡️ Characters</h3>
+                <div id="characters-list" class="grid">
+                    <p>Loading characters...</p>
+                </div>
+            </section>
+
+            <!-- Story Arcs Section -->
+            <section class="section" id="arcs">
+                <h3>📖 Story Arcs</h3>
+                <div id="arcs-list" class="grid">
+                    <p>Loading arcs...</p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 OnePiece API. Powered by FastAPI + Uvicorn</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', path='/js/app.js') }}"></script>
+</body>
+</html>
